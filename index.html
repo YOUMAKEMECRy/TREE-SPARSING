@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<meta charset="UTF-8">
+<title>Grammar Ambiguity Dashboard</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    color: white;
+    background: url('wallpaper.jpg') no-repeat center center fixed;
+    background-size: cover;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.65);
+    z-index: -1;
+}
+
+header {
+    text-align: center;
+    padding: 20px;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.controls {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    padding: 20px;
+    border-radius: 15px;
+    margin: 20px;
+    width: 80%;
+    text-align: center;
+}
+
+input {
+    padding: 10px;
+    width: 300px;
+    border-radius: 8px;
+    border: none;
+    font-size: 16px;
+}
+
+button {
+    padding: 10px 20px;
+    margin: 10px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    background: #22c55e;
+    color: white;
+    transition: 0.3s;
+}
+
+button:hover {
+    transform: scale(1.05);
+    background: #16a34a;
+}
+
+.trees {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.card {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    margin: 15px;
+    padding: 15px;
+    border-radius: 15px;
+    width: 320px;
+    transition: 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.status {
+    font-size: 20px;
+    margin: 10px;
+    font-weight: bold;
+}
+
+#historyList {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-top: 10px;
+}
+
+.history-item {
+    background: rgba(255,255,255,0.15);
+    padding: 8px;
+    margin: 5px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.history-item:hover {
+    background: #22c55e;
+}
+</style>
+</head>
+
+<body>
+
+<header>🌳 Grammar Ambiguity Dashboard</header>
+
+<div class="dashboard">
+
+<div class="controls">
+
+    <input id="expr" placeholder="Enter expression (e.g. a+a*a)">
+    <br>
+
+    <button onclick="generate()">Generate Trees</button>
+    <button onclick="reset()">Reset</button>
+
+    <div>
+        <label>
+            <input type="checkbox" id="modeToggle">
+            Use Precedence Grammar
+        </label>
+    </div>
+
+    <div>
+        <button onclick="loadExample('a+a*a')">Example 1</button>
+        <button onclick="loadExample('a*a+a')">Example 2</button>
+        <button onclick="loadExample('a+a+a')">Example 3</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <h3>🕘 History</h3>
+    <div id="historyList"></div>
+    <button onclick="clearHistory()">Clear History</button>
+
+</div>
+
+<div class="trees" id="trees"></div>
+
+</div>
+
+<script>
+
+// ---------------- HISTORY ----------------
+function saveHistory(expr) {
+    let history = JSON.parse(localStorage.getItem("history")) || [];
+
+    if (!history.includes(expr)) {
+        history.unshift(expr);
+    }
+
+    if (history.length > 5) history.pop();
+
+    localStorage.setItem("history", JSON.stringify(history));
+    loadHistory();
+}
+
+function loadHistory() {
+    const historyDiv = document.getElementById("historyList");
+    historyDiv.innerHTML = "";
+
+    let history = JSON.parse(localStorage.getItem("history")) || [];
+
+    history.forEach(expr => {
+        let div = document.createElement("div");
+        div.className = "history-item";
+        div.innerText = expr;
+
+        div.onclick = () => {
+            document.getElementById("expr").value = expr;
+            generate();
+        };
+
+        historyDiv.appendChild(div);
+    });
+}
+
+function clearHistory() {
+    localStorage.removeItem("history");
+    loadHistory();
+}
+
+// ---------------- MAIN ----------------
+function generate() {
+    const expr = document.getElementById("expr").value;
+    const treesDiv = document.getElementById("trees");
+    treesDiv.innerHTML = "";
+
+    if (!expr) return;
+
+    saveHistory(expr);
+
+    const isUnambiguous = document.getElementById("modeToggle").checked;
+    let trees = [];
+
+    if (isUnambiguous) {
+        trees.push(buildPrecedenceTree(expr));
+    } else {
+        trees.push(buildLeftTree(expr));
+        trees.push(buildRightTree(expr));
+    }
+
+    trees.forEach((t, i) => drawTree(t, "Tree " + (i+1)));
+
+    document.getElementById("status").innerText =
+        trees.length > 1 ? "⚠️ Ambiguous Grammar" : "✅ Unambiguous";
+
+    try {
+        let result = eval(expr.replace(/a/g, "2"));
+        document.getElementById("status").innerText += " | Result: " + result;
+    } catch {}
+}
+
+// ---------------- TREE BUILDERS ----------------
+function buildLeftTree(expr) {
+    let parts = expr.split(/(\+|\*)/);
+    return {
+        name: parts[1],
+        children: [{name: parts[0]}, {name: parts[2]}]
+    };
+}
+
+function buildRightTree(expr) {
+    let parts = expr.split(/(\+|\*)/);
+    return {
+        name: parts[3] || parts[1],
+        children: [
+            {
+                name: parts[1],
+                children: [{name: parts[0]}, {name: parts[2]}]
+            },
+            {name: parts[4] || parts[2]}
+        ]
+    };
+}
+
+function buildPrecedenceTree(expr) {
+    let parts = expr.split("+");
+    return {
+        name: "+",
+        children: parts.map(p => buildMulTree(p))
+    };
+}
+
+function buildMulTree(expr) {
+    let parts = expr.split("*");
+    if (parts.length > 1) {
+        return {
+            name: "*",
+            children: parts.map(p => ({name: p}))
+        };
+    }
+    return {name: expr};
+}
+
+// ---------------- DRAW ----------------
+function drawTree(data, title) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const heading = document.createElement("h3");
+    heading.innerText = title;
+    card.appendChild(heading);
+
+    const svg = d3.create("svg").attr("width", 300).attr("height", 200);
+
+    const root = d3.hierarchy(data);
+    d3.tree().size([200,150])(root);
+
+    svg.selectAll("line")
+        .data(root.links())
+        .enter()
+        .append("line")
+        .attr("x1", d => d.source.x + 50)
+        .attr("y1", d => d.source.y + 20)
+        .attr("x2", d => d.target.x + 50)
+        .attr("y2", d => d.target.y + 20)
+        .attr("stroke", "white");
+
+    svg.selectAll("circle")
+        .data(root.descendants())
+        .enter()
+        .append("circle")
+        .attr("cx", d => d.x + 50)
+        .attr("cy", d => d.y + 20)
+        .attr("r", 10)
+        .attr("fill", "#22c55e");
+
+    svg.selectAll("text")
+        .data(root.descendants())
+        .enter()
+        .append("text")
+        .attr("x", d => d.x + 50)
+        .attr("y", d => d.y + 25)
+        .attr("text-anchor", "middle")
+        .attr("fill", "black")
+        .text(d => d.data.name);
+
+    card.appendChild(svg.node());
+    document.getElementById("trees").appendChild(card);
+}
+
+// ---------------- UTILS ----------------
+function reset() {
+    document.getElementById("trees").innerHTML = "";
+    document.getElementById("expr").value = "";
+    document.getElementById("status").innerText = "";
+}
+
+function loadExample(e) {
+    document.getElementById("expr").value = e;
+}
+
+loadHistory();
+
+</script>
+
+</body>
+</html>
